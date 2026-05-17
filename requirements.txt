@@ -8,3 +8,16 @@ passlib[bcrypt]
 bcrypt==4.0.1
 pydantic-settings
 python-multipart
+aiosqlite
+alembic
+bcrypt==4.0.1
+fastapi
+passlib[bcrypt]
+pydantic-settings
+python-jose[cryptography]
+python-multipart
+sqlalchemy[asyncio]
+uvicorn[standard]
+aiosqlite
+gunicorn
+uvicorn[standard]
