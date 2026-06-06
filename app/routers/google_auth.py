@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
@@ -23,6 +25,8 @@ from app.services.auth import (
 )
 from app.services.google_auth import verify_google_token
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/auth", tags=["google-auth"])
 
 
@@ -35,7 +39,9 @@ def _error(status_code: int, error: str, message: str) -> JSONResponse:
 
 @router.post("/google", response_model=GoogleAuthResponse)
 async def google_login(body: GoogleAuthRequest, db: AsyncSession = Depends(get_db)):
+    logger.info("POST /api/auth/google — idToken present=%s", bool(body.idToken))
     if not body.idToken:
+        logger.warning("google_login: missing idToken")
         return _error(
             status.HTTP_400_BAD_REQUEST,
             "Bad Request",
@@ -44,7 +50,8 @@ async def google_login(body: GoogleAuthRequest, db: AsyncSession = Depends(get_d
 
     try:
         payload = verify_google_token(body.idToken)
-    except ValueError:
+    except ValueError as e:
+        logger.warning("google_login: token verification failed — %s", e)
         return _error(
             status.HTTP_401_UNAUTHORIZED,
             "Unauthorized",
@@ -55,6 +62,7 @@ async def google_login(body: GoogleAuthRequest, db: AsyncSession = Depends(get_d
     name: str = payload.get("name", "")
     email: str | None = payload.get("email")
     avatar_url: str | None = payload.get("picture")
+    logger.debug("google_login: google_id=%s email=%s", google_id, email)
 
     result = await db.execute(select(User).where(User.google_id == google_id))
     user = result.scalar_one_or_none()
@@ -74,6 +82,7 @@ async def google_login(body: GoogleAuthRequest, db: AsyncSession = Depends(get_d
         db.add(user)
         await db.commit()
         await db.refresh(user)
+        logger.info("google_login: new user created — user_id=%s email=%s", user.id, user.email)
     else:
         updated = False
         if user.google_id != google_id:
@@ -85,10 +94,18 @@ async def google_login(body: GoogleAuthRequest, db: AsyncSession = Depends(get_d
         if updated:
             await db.commit()
             await db.refresh(user)
+            logger.debug("google_login: existing user profile updated — user_id=%s", user.id)
+        else:
+            logger.debug("google_login: existing user login — user_id=%s", user.id)
 
-    access_token = create_access_token(user.id)
-    raw_refresh, refresh_hash = generate_refresh_token()
-    await store_refresh_token(user.id, refresh_hash, db)
+    try:
+        access_token = create_access_token(user.id)
+        raw_refresh, refresh_hash = generate_refresh_token()
+        await store_refresh_token(user.id, refresh_hash, db)
+        logger.info("google_login: tokens issued for user_id=%s", user.id)
+    except Exception:
+        logger.exception("google_login: failed to issue tokens for user_id=%s", user.id)
+        raise
 
     return GoogleAuthResponse(
         token=access_token,
@@ -104,7 +121,9 @@ async def google_login(body: GoogleAuthRequest, db: AsyncSession = Depends(get_d
 
 @router.post("/refresh", response_model=RefreshTokenResponse)
 async def refresh_token(body: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
+    logger.info("POST /api/auth/refresh — refreshToken present=%s", bool(body.refreshToken))
     if not body.refreshToken:
+        logger.warning("refresh_token: missing refreshToken in body")
         return _error(
             status.HTTP_400_BAD_REQUEST,
             "Bad Request",
@@ -113,7 +132,9 @@ async def refresh_token(body: RefreshTokenRequest, db: AsyncSession = Depends(ge
 
     try:
         new_raw_refresh, _, user_id = await rotate_refresh_token(body.refreshToken, db)
-    except HTTPException:
+        logger.info("refresh_token: rotated successfully for user_id=%s", user_id)
+    except HTTPException as e:
+        logger.warning("refresh_token: rotation failed — %s", e.detail)
         return _error(
             status.HTTP_401_UNAUTHORIZED,
             "Unauthorized",
@@ -129,11 +150,17 @@ async def logout(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await db.execute(
-        update(RefreshToken)
-        .where(RefreshToken.user_id == current_user.id, RefreshToken.is_revoked == False)
-        .values(is_revoked=True)
-    )
-    await db.commit()
+    logger.info("POST /api/auth/logout — user_id=%s", current_user.id)
+    try:
+        await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == current_user.id, RefreshToken.is_revoked == False)
+            .values(is_revoked=True)
+        )
+        await db.commit()
+        logger.info("logout: all refresh tokens revoked for user_id=%s", current_user.id)
+    except Exception:
+        logger.exception("logout: failed to revoke tokens for user_id=%s", current_user.id)
+        raise
 
     return LogoutResponse(message="Successfully logged out and session token invalidated.")
