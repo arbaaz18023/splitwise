@@ -6,7 +6,7 @@ from sqlalchemy import text
 from app.database import engine, Base
 from app.models import user, group, expense, refresh_token  # noqa: F401 - ensure models are registered
 from app.routers import auth, groups, expenses
-from app.routers import google_auth, api_groups, api_dashboard, api_users
+from app.routers import google_auth, api_groups, api_dashboard, api_users, api_expenses
 
 
 @asynccontextmanager
@@ -36,6 +36,8 @@ app.include_router(google_auth.router)
 app.include_router(api_groups.router)
 app.include_router(api_dashboard.router)
 app.include_router(api_users.router)
+app.include_router(api_expenses.groups_router)
+app.include_router(api_expenses.expenses_router)
 
 
 @app.get("/")

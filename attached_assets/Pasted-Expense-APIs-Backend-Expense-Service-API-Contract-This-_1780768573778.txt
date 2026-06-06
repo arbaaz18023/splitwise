@@ -1,0 +1,137 @@
+Expense APIs
+
+
+# Backend Expense Service API Contract
+
+This document describes the API contract for creating, fetching, and managing shared expenses.
+
+---
+
+## 1. Fetch Group Expenses
+
+Retrieve all expenses belonging to a specific group.
+
+- **HTTP Method**: `GET`
+- **Path**: `/api/groups/{groupId}/expenses`
+- **Headers**:
+  - `Authorization: Bearer <token>` (Required)
+- **Accept**: `application/json`
+
+### Success Response
+- **Status Code**: `200 OK`
+
+```json
+[
+  {
+    "id": "string",
+    "title": "string",
+    "amount": 0.0,
+    "paidBy": {
+      "id": "string",
+      "name": "string",
+      "email": "string",
+      "avatarUrl": "string"
+    },
+    "splitMethod": "EQUAL",
+    "participants": [
+      {
+        "id": "string",
+        "name": "string",
+        "email": "string",
+        "avatarUrl": "string"
+      }
+    ],
+    "timestamp": "string",
+    "groupId": "string"
+  }
+]
+```
+
+---
+
+## 2. Create New Expense
+
+Record a new expense transaction. If `groupId` is provided, it is split among the group members according to the `splitMethod`.
+
+- **HTTP Method**: `POST`
+- **Path**: `/api/expenses`
+- **Headers**:
+  - `Authorization: Bearer <token>` (Required)
+  - `Content-Type: application/json`
+- **Accept**: `application/json`
+
+### Request Payload
+
+```json
+{
+  "title": "string",
+  "amount": 0.0,
+  "paidById": "string",
+  "groupId": "string",
+  "splitMethod": "EQUAL",
+  "participantIds": [
+    "string"
+  ]
+}
+```
+
+#### Fields
+
+| Field Name | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `title` | String | Yes | Brief description of the expense (e.g. "Lunch", "Airbnb"). |
+| `amount` | Double | Yes | Total cost amount. Must be greater than 0.0. |
+| `paidById` | String | Yes | ID of the user who paid the bill. |
+| `groupId` | String | No | ID of the group if this is a group expense. If empty, it is a non-group expense. |
+| `splitMethod` | String | Yes | Split configuration: `"EQUAL"` or `"UNEQUAL"`. Default is `"EQUAL"`. |
+| `participantIds` | Array[String] | Yes | List of user IDs sharing the expense. |
+
+### Success Response
+- **Status Code**: `201 Created`
+
+```json
+{
+  "id": "string",
+  "title": "string",
+  "amount": 0.0,
+  "paidBy": {
+    "id": "string",
+    "name": "string",
+    "email": "string",
+    "avatarUrl": "string"
+  },
+  "splitMethod": "EQUAL",
+  "participants": [
+    {
+      "id": "string",
+      "name": "string",
+      "email": "string",
+      "avatarUrl": "string"
+    }
+  ],
+  "timestamp": "string",
+  "groupId": "string"
+}
+```
+
+### Error Responses
+- **Status Code**: `400 Bad Request` (Invalid amount, empty list of participants, or unknown group).
+- **Status Code**: `401 Unauthorized` (Invalid or missing token).
+
+---
+
+## 3. Delete Expense
+
+Revert/delete an existing expense transaction.
+
+- **HTTP Method**: `DELETE`
+- **Path**: `/api/expenses/{expenseId}`
+- **Headers**:
+  - `Authorization: Bearer <token>` (Required)
+
+### Success Response
+- **Status Code**: `204 No Content`
+
+### Error Responses
+- **Status Code**: `401 Unauthorized` (Invalid or missing token).
+- **Status Code**: `404 Not Found` (Expense ID does not exist).
