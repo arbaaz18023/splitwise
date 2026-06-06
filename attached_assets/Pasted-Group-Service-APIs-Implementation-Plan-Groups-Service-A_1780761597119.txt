@@ -1,0 +1,113 @@
+Group Service APIs
+
+
+# Implementation Plan - Groups Service API Integration (Detailed)
+
+This plan outlines the integration of backend contracts for the Groups Service into the SplitIt application, detailing exactly which API is used for what purpose and under what conditions.
+
+---
+
+## User Review Required
+
+We have detailed the exact mappings between user interface actions and backend endpoints. Please verify that this interaction mapping fits your backend architectural design.
+
+---
+
+## Detailed Group API Contract & Flow Mappings
+
+The table below summarizes the client-backend interaction points:
+
+| Action / UI Screen | API Endpoint | Trigger Condition | Success Outcome | Error Outcome |
+| :--- | :--- | :--- | :--- | :--- |
+| **Groups Screen** | `GET /api/groups` | Screen enters the composition lifecycle | Displays list of groups & balances | Renders retry card with error |
+| **Create Group Button** | `POST /api/groups` | User presses "Create Group" with a valid name | navigates to the detail view of the new group | Renders warning toast above CTA |
+| **Group Detail Screen** | `GET /api/groups/{groupId}` | Screen lifecycle starts or refresh is requested | Displays specific group balance & members | Displays "Group details not discovered" |
+| **Add Member Event** | `POST /api/groups/{groupId}/members` | User verifies & invites a member to group | Adds member to backend list and refreshes UI | Displays error banner in dialog |
+
+---
+
+### 1. Retrieve Group List (`GET /api/groups`)
+- **Purpose**: Fetch all groups where the currently authenticated user is registered as a member.
+- **Client Usage**: Triggered in a `LaunchedEffect` block when `GroupsScreen` is opened.
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Response Schemas**:
+  - `200 OK`: A JSON array of group objects.
+    ```json
+    [
+      {
+        "id": "group_vacation_001",
+        "name": "Summer Trip 2026",
+        "members": [
+          { "id": "user_me", "name": "Alex", "email": "alex@example.com" },
+          { "id": "user_bob", "name": "Bob", "email": null }
+        ],
+        "createdBy": { "id": "user_me", "name": "Alex", "email": "alex@example.com" },
+        "createdAt": "Jun 06, 2026",
+        "totalBalance": 150.0
+      }
+    ]
+    ```
+  - `401 Unauthorized`: Session token is invalid, expired, or missing. Reroutes the client to the Authentication screen.
+
+---
+
+### 2. Create Group (`POST /api/groups`)
+- **Purpose**: Persist a newly created group and register its initial members list on the backend database.
+- **Client Usage**: Triggered on the `CreateGroupScreen` when the user clicks the "Create Group" button.
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Request Body**:
+  ```json
+  {
+    "name": "Summer Trip 2026",
+    "members": [
+      {
+        "id": null,
+        "name": "Bob Guest",
+        "phoneNumber": "+1 (555) 019-2222"
+      }
+    ]
+  }
+  ```
+- **Response Schemas**:
+  - `200 OK` / `201 Created`: The created group details matching the `GET` schema.
+  - `400 Bad Request`: Group name validation fails (e.g. blank name).
+  - `401 Unauthorized`: Session token is invalid or missing.
+
+---
+
+### 3. Fetch Group Details (`GET /api/groups/{groupId}`)
+- **Purpose**: Get detailed member listing and debt totals for a specific group.
+- **Client Usage**: Triggered in `GroupDetailScreen` during initialization, or when the user pulls to refresh details.
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Response Schemas**:
+  - `200 OK`: A single group object matching the `GET /api/groups` array item structure.
+  - `401 Unauthorized`: Session token is invalid or missing.
+  - `404 Not Found`: Group ID does not exist or the user is not a member of the requested group.
+
+---
+
+### 4. Invite/Add Members (`POST /api/groups/{groupId}/members`)
+- **Purpose**: Append new user identities to the membership list of an active group.
+- **Client Usage**: Triggered when a user adds a verified contact or guest user to the current group roster.
+- **Headers**:
+  - `Authorization: Bearer <token>`
+- **Request Body**:
+  ```json
+  {
+    "memberIds": ["user_bob_xyz123"]
+  }
+  ```
+- **Response Schemas**:
+  - `200 OK`: Confirmation of membership update.
+    ```json
+    {
+      "message": "Members successfully added to the group."
+    }
+    ```
+  - `401 Unauthorized`: Session token is invalid or missing.
+  - `404 Not Found`: Group ID does not exist.
+
+---

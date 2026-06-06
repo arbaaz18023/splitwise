@@ -6,7 +6,7 @@ from sqlalchemy import text
 from app.database import engine, Base
 from app.models import user, group, expense, refresh_token  # noqa: F401 - ensure models are registered
 from app.routers import auth, groups, expenses
-from app.routers import google_auth
+from app.routers import google_auth, api_groups
 
 
 @asynccontextmanager
@@ -22,6 +22,9 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE users ALTER COLUMN hashed_password DROP NOT NULL"
         ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(50)"
+        ))
     yield
 
 
@@ -30,6 +33,7 @@ app.include_router(auth.router)
 app.include_router(groups.router)
 app.include_router(expenses.router)
 app.include_router(google_auth.router)
+app.include_router(api_groups.router)
 
 
 @app.get("/")
