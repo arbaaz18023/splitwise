@@ -1,6 +1,7 @@
 from datetime import datetime
+from typing import Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
 class UserCreate(BaseModel):
@@ -26,3 +27,19 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     user_id: int | None = None
+
+
+class GoogleAuthRequest(BaseModel):
+    idToken: str
+
+
+class GoogleUserProfile(BaseModel):
+    id: str
+    name: str
+    email: Optional[str] = None
+    avatarUrl: Optional[str] = None
+
+
+class GoogleAuthResponse(BaseModel):
+    token: str
+    user: GoogleUserProfile

@@ -21,3 +21,5 @@ uvicorn[standard]
 aiosqlite
 gunicorn
 uvicorn[standard]
+google-auth
+requests
