@@ -1,0 +1,110 @@
+Users & Contacts:
+
+# Backend User & Contacts API Contract
+
+This document describes the API contract for fetching user profiles, updating profiles, and searching users.
+
+---
+
+## 1. Fetch Current User Details
+
+Retrieve the profile details of the currently authenticated user.
+
+- **HTTP Method**: `GET`
+- **Path**: `/api/users/me`
+- **Headers**:
+  - `Authorization: Bearer <token>` (Required)
+- **Accept**: `application/json`
+
+### Success Response
+- **Status Code**: `200 OK`
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "email": "string",
+  "avatarUrl": "string"
+}
+```
+
+---
+
+## 2. Update Current User Profile
+
+Modify the profile details of the currently authenticated user.
+
+- **HTTP Method**: `PUT`
+- **Path**: `/api/users/me`
+- **Headers**:
+  - `Authorization: Bearer <token>` (Required)
+- **Content-Type**: `application/json`
+- **Accept**: `application/json`
+
+### Request Payload
+
+```json
+{
+  "name": "string",
+  "email": "string"
+}
+```
+
+#### Fields
+
+| Field Name | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `name` | String | Yes | Updated display name (cannot be blank). |
+| `email` | String | No | Updated email address (can be null). |
+
+### Success Response
+- **Status Code**: `200 OK`
+
+```json
+{
+  "id": "string",
+  "name": "string",
+  "email": "string",
+  "avatarUrl": "string"
+}
+```
+
+### Error Responses
+- **Status Code**: `400 Bad Request` (e.g. Blank name or invalid email format).
+- **Status Code**: `401 Unauthorized` (Invalid or missing token).
+
+---
+
+## 3. Search Users
+
+Search registered users by query, exact email, or phone number suffix. Used for autocomplete and contact matching.
+
+- **HTTP Method**: `GET`
+- **Path**: `/api/users/search`
+- **Headers**:
+  - `Authorization: Bearer <token>` (Required)
+- **Accept**: `application/json`
+
+### Query Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `query` | String | No | Search text matching display name or email prefix. |
+| `email` | String | No | Search for a specific registered user by exact email. |
+| `phoneSuffix` | String | No | Search for users matching a specific phone number suffix (e.g. last 4 digits `2222`). |
+
+### Success Response
+- **Status Code**: `200 OK`
+
+Returns a list of matching users:
+
+```json
+[
+  {
+    "id": "string",
+    "name": "string",
+    "email": "string",
+    "avatarUrl": "string"
+  }
+]
+```
