@@ -187,9 +187,7 @@ async def add_members(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    group = await _get_group_or_404(db, group_id)
-    if not await _is_member(db, group_id, current_user.id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+    await _get_group_or_404(db, group_id)
 
     for member_id_str in data.memberIds:
         try:
