@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +16,8 @@ from app.schemas.group import (
     GroupMemberResponse,
     GroupResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/groups", tags=["groups"])
 
@@ -112,20 +116,40 @@ async def add_members(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    group = await _get_group_or_404(db, group_id)
-    if group.created_by != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the group creator can add members")
+    logger.info("POST /groups/%s/members — user_id=%s user_ids=%s", group_id, current_user.id, data.user_ids)
+    try:
+        group = await _get_group_or_404(db, group_id)
 
-    for uid in data.user_ids:
-        if not await _is_member(db, group_id, uid):
-            db.add(GroupMember(group_id=group_id, user_id=uid))
-    await db.commit()
+        if group.created_by != current_user.id:
+            logger.warning(
+                "add_members forbidden: user_id=%s is not creator of group_id=%s (creator=%s)",
+                current_user.id, group_id, group.created_by,
+            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the group creator can add members")
 
-    members = await _get_members_response(db, group.id)
-    return GroupResponse(
-        id=group.id, name=group.name, description=group.description,
-        created_by=group.created_by, created_at=group.created_at, members=members,
-    )
+        added = []
+        skipped = []
+        for uid in data.user_ids:
+            if not await _is_member(db, group_id, uid):
+                db.add(GroupMember(group_id=group_id, user_id=uid))
+                added.append(uid)
+            else:
+                logger.debug("add_members: user_id=%s already in group_id=%s — skipping", uid, group_id)
+                skipped.append(uid)
+
+        await db.commit()
+        logger.info("add_members: group_id=%s added=%s skipped=%s", group_id, added, skipped)
+
+        members = await _get_members_response(db, group.id)
+        return GroupResponse(
+            id=group.id, name=group.name, description=group.description,
+            created_by=group.created_by, created_at=group.created_at, members=members,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Unexpected error in add_members: group_id=%s user_id=%s", group_id, current_user.id)
+        raise
 
 
 @router.delete("/{group_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
