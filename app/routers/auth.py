@@ -6,21 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
-from app.schemas.user import (
-    UserCreate,
-    UserResponse,
-    LoginResponse,
-    RefreshRequest,
-    LogoutRequest,
-)
+from app.schemas.user import UserCreate, UserResponse, LoginResponse
 from app.services.auth import (
     hash_password,
     verify_password,
     create_access_token,
     generate_refresh_token,
     store_refresh_token,
-    rotate_refresh_token,
-    revoke_refresh_token,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -60,18 +52,6 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSessi
     await store_refresh_token(user.id, refresh_hash, db)
 
     return LoginResponse(access_token=access_token, refresh_token=raw_refresh)
-
-
-@router.post("/refresh", response_model=LoginResponse)
-async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
-    new_raw_refresh, _, user_id = await rotate_refresh_token(body.refresh_token, db)
-    new_access_token = create_access_token(user_id)
-    return LoginResponse(access_token=new_access_token, refresh_token=new_raw_refresh)
-
-
-@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(body: LogoutRequest, db: AsyncSession = Depends(get_db)):
-    await revoke_refresh_token(body.refresh_token, db)
 
 
 @router.get("/me", response_model=UserResponse)
