@@ -2,17 +2,21 @@
 
 ## Overview
 
-A REST API for managing shared expenses among friends and groups. Supports user authentication, group management, and expense tracking with flexible split options.
+A REST API for managing shared expenses among friends and groups. Supports email/password authentication, Google Sign-In, group management, and expense tracking with flexible split options.
 
 **Base URL:** `https://<your-replit-domain>`  
 **Interactive Docs:** `https://<your-replit-domain>/docs`  
-**Auth:** JWT Bearer Token (obtain via `/auth/login`)
+**Auth:** JWT Bearer Token — obtain via `/auth/login` (email/password) or `/api/auth/google` (Google Sign-In)
 
 ---
 
 ## Table of Contents
 
 - [Authentication](#authentication)
+  - [POST /auth/signup](#post-authsignup)
+  - [POST /auth/login](#post-authlogin)
+  - [GET /auth/me](#get-authme)
+  - [POST /api/auth/google](#post-apiauthgoogle)
 - [Groups](#groups)
 - [Expenses](#expenses)
 - [Balances](#balances)
@@ -26,15 +30,15 @@ A REST API for managing shared expenses among friends and groups. Supports user 
 
 ### POST `/auth/signup`
 
-Register a new user account.
+Register a new user account with email and password.
 
 **Request Body**
 
-| Field    | Type   | Required | Description        |
-|----------|--------|----------|--------------------|
+| Field    | Type   | Required | Description          |
+|----------|--------|----------|----------------------|
 | email    | string | Yes      | Unique email address |
-| name     | string | Yes      | Display name       |
-| password | string | Yes      | Plain text password |
+| name     | string | Yes      | Display name         |
+| password | string | Yes      | Plain text password  |
 
 **Example**
 ```bash
@@ -48,7 +52,8 @@ curl -X POST "$BASE_URL/auth/signup" \
 {
   "id": 1,
   "email": "alice@example.com",
-  "name": "Alice"
+  "name": "Alice",
+  "created_at": "2026-06-06T10:00:00Z"
 }
 ```
 
@@ -56,14 +61,14 @@ curl -X POST "$BASE_URL/auth/signup" \
 
 ### POST `/auth/login`
 
-Authenticate and receive a JWT access token.
+Authenticate with email/password and receive a JWT access token.
 
-**Request Body** (form data)
+**Request Body** (form data — `application/x-www-form-urlencoded`)
 
-| Field    | Type   | Required | Description   |
-|----------|--------|----------|---------------|
-| username | string | Yes      | User's email  |
-| password | string | Yes      | User's password |
+| Field    | Type   | Required | Description      |
+|----------|--------|----------|------------------|
+| username | string | Yes      | User's email     |
+| password | string | Yes      | User's password  |
 
 **Example**
 ```bash
@@ -88,8 +93,8 @@ Get the currently authenticated user's profile.
 
 **Headers**
 
-| Header        | Value                  |
-|---------------|------------------------|
+| Header        | Value                   |
+|---------------|-------------------------|
 | Authorization | `Bearer <access_token>` |
 
 **Example**
@@ -103,8 +108,69 @@ curl "$BASE_URL/auth/me" \
 {
   "id": 1,
   "email": "alice@example.com",
-  "name": "Alice"
+  "name": "Alice",
+  "created_at": "2026-06-06T10:00:00Z"
 }
+```
+
+---
+
+### POST `/api/auth/google`
+
+Authenticate using a Google ID token (from Google Sign-In SDK). Creates a new user on first login, or logs in the existing user if the email or Google account is already registered. Returns a JWT token identical in format to the one from `/auth/login` — use it the same way in subsequent requests.
+
+**Request Body**
+
+| Field   | Type   | Required | Description                                           |
+|---------|--------|----------|-------------------------------------------------------|
+| idToken | string | Yes      | Google OIDC ID Token (JWT) obtained from Google SDK   |
+
+**Example**
+```bash
+curl -X POST "$BASE_URL/api/auth/google" \
+  -H "Content-Type: application/json" \
+  -d '{"idToken": "<google-id-token-from-sdk>"}'
+```
+
+**Response `200`**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "1",
+    "name": "Alice Smith",
+    "email": "alice@gmail.com",
+    "avatarUrl": "https://lh3.googleusercontent.com/a/..."
+  }
+}
+```
+
+> **Using the token:** Pass it in subsequent requests as `Authorization: Bearer <token>`, identical to the email/password flow.
+
+**Error Responses**
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| `400`  | `idToken` field missing | `{"error": "Bad Request", "message": "Required request body parameter 'idToken' is missing."}` |
+| `401`  | Token invalid or expired | `{"error": "Unauthorized", "message": "Invalid google credential. Backend verification failed."}` |
+
+**Google Client ID**
+
+This endpoint verifies tokens against:
+```
+247947971682-kj0ekerp225jpva63kp03j6nhfq0u462.apps.googleusercontent.com
+```
+Tokens issued by any other OAuth client will be rejected.
+
+**Android SDK snippet (Kotlin)**
+```kotlin
+val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+    .requestIdToken("247947971682-kj0ekerp225jpva63kp03j6nhfq0u462.apps.googleusercontent.com")
+    .requestEmail()
+    .build()
+
+// After sign-in succeeds:
+val idToken = account.idToken  // send this to POST /api/auth/google
 ```
 
 ---
@@ -119,11 +185,11 @@ Create a new group. The creator is automatically added as a member.
 
 **Request Body**
 
-| Field       | Type      | Required | Description                        |
-|-------------|-----------|----------|------------------------------------|
-| name        | string    | Yes      | Group name                         |
-| description | string    | No       | Optional description               |
-| member_ids  | int[]     | No       | User IDs to add as initial members |
+| Field       | Type   | Required | Description                        |
+|-------------|--------|----------|------------------------------------|
+| name        | string | Yes      | Group name                         |
+| description | string | No       | Optional description               |
+| member_ids  | int[]  | No       | User IDs to add as initial members |
 
 **Example**
 ```bash
@@ -142,7 +208,7 @@ curl -X POST "$BASE_URL/groups" \
   "created_by": 1,
   "members": [
     {"id": 1, "name": "Alice", "email": "alice@example.com"},
-    {"id": 2, "name": "Bob", "email": "bob@example.com"}
+    {"id": 2, "name": "Bob",   "email": "bob@example.com"}
   ]
 }
 ```
@@ -162,8 +228,8 @@ curl "$BASE_URL/groups" \
 **Response `200`**
 ```json
 [
-  {"id": 1, "name": "Trip to Goa", "description": "Vacation expenses"},
-  {"id": 2, "name": "Flatmates", "description": "Monthly bills"}
+  {"id": 1, "name": "Trip to Goa",  "description": "Vacation expenses"},
+  {"id": 2, "name": "Flatmates",    "description": "Monthly bills"}
 ]
 ```
 
@@ -199,9 +265,9 @@ Add members to a group. Only the group creator can do this.
 
 **Request Body**
 
-| Field    | Type  | Required | Description          |
-|----------|-------|----------|----------------------|
-| user_ids | int[] | Yes      | IDs of users to add  |
+| Field    | Type  | Required | Description         |
+|----------|-------|----------|---------------------|
+| user_ids | int[] | Yes      | IDs of users to add |
 
 **Example**
 ```bash
@@ -219,9 +285,9 @@ Remove a member from a group. Only the group creator can do this.
 
 **Path Parameters**
 
-| Parameter | Type | Description       |
-|-----------|------|-------------------|
-| group_id  | int  | Group ID          |
+| Parameter | Type | Description          |
+|-----------|------|----------------------|
+| group_id  | int  | Group ID             |
 | user_id   | int  | ID of user to remove |
 
 **Example**
@@ -242,9 +308,11 @@ All expense endpoints require `Authorization: Bearer <token>`.
 
 Create an expense within a group. Supports three split types:
 
-- **`equal`** — Amount divided equally among all group members
-- **`exact`** — You specify the exact amount each person owes
-- **`percentage`** — You specify the percentage share for each person (must total 100)
+| Split Type    | Behaviour |
+|---------------|-----------|
+| `equal`       | Amount divided equally among all group members |
+| `exact`       | You specify the exact amount each person owes |
+| `percentage`  | You specify each person's share as a percentage (must total 100) |
 
 **Path Parameters**
 
@@ -254,21 +322,21 @@ Create an expense within a group. Supports three split types:
 
 **Request Body**
 
-| Field       | Type       | Required | Description                                    |
-|-------------|------------|----------|------------------------------------------------|
-| description | string     | Yes      | What the expense is for                        |
-| amount      | float      | Yes      | Total expense amount                           |
-| paid_by     | int        | Yes      | User ID of who paid                            |
-| split_type  | string     | Yes      | `"equal"`, `"exact"`, or `"percentage"`        |
-| splits      | SplitItem[]| No       | Required for `exact` and `percentage` types    |
+| Field       | Type        | Required | Description                                 |
+|-------------|-------------|----------|---------------------------------------------|
+| description | string      | Yes      | What the expense is for                     |
+| amount      | float       | Yes      | Total expense amount                        |
+| paid_by     | int         | Yes      | User ID of who paid                         |
+| split_type  | string      | Yes      | `"equal"`, `"exact"`, or `"percentage"`     |
+| splits      | SplitItem[] | No       | Required for `exact` and `percentage` types |
 
-**SplitItem fields:**
+**SplitItem fields**
 
-| Field      | Type  | Used When          |
-|------------|-------|--------------------|
-| user_id    | int   | Always             |
-| amount     | float | `split_type=exact` |
-| percentage | float | `split_type=percentage` |
+| Field      | Type  | Used When               |
+|------------|-------|-------------------------|
+| user_id    | int   | Always                  |
+| amount     | float | `split_type = exact`    |
+| percentage | float | `split_type = percentage` |
 
 **Example — Equal Split**
 ```bash
@@ -330,7 +398,8 @@ curl -X POST "$BASE_URL/groups/1/expenses" \
     {"user_id": 1, "amount": 1500.0},
     {"user_id": 2, "amount": 1500.0}
   ],
-  "created_at": "2026-05-17T10:00:00Z"
+  "created_at": "2026-06-06T10:00:00Z",
+  "updated_at": "2026-06-06T10:00:00Z"
 }
 ```
 
@@ -373,13 +442,13 @@ Update an expense. Only the group creator or the person who paid can update.
 
 **Request Body** (all fields optional)
 
-| Field       | Type       | Description                  |
-|-------------|------------|------------------------------|
-| description | string     | New description              |
-| amount      | float      | New total amount             |
-| paid_by     | int        | New payer user ID            |
-| split_type  | string     | New split type               |
-| splits      | SplitItem[]| New split details            |
+| Field       | Type        | Description           |
+|-------------|-------------|-----------------------|
+| description | string      | New description       |
+| amount      | float       | New total amount      |
+| paid_by     | int         | New payer user ID     |
+| split_type  | string      | New split type        |
+| splits      | SplitItem[] | New split details     |
 
 **Example**
 ```bash
@@ -409,7 +478,10 @@ curl -X DELETE "$BASE_URL/groups/1/expenses/1" \
 
 ### GET `/groups/{group_id}/balances`
 
-Get the net balance of every member in a group. A positive balance means the user is owed money; negative means they owe money.
+Get the net balance of every member in a group.
+
+- **Positive balance** → user is owed money
+- **Negative balance** → user owes money
 
 **Example**
 ```bash
@@ -431,7 +503,30 @@ curl "$BASE_URL/groups/1/balances" \
 
 ### UserResponse
 ```json
-{ "id": 1, "email": "alice@example.com", "name": "Alice" }
+{
+  "id": 1,
+  "email": "alice@example.com",
+  "name": "Alice",
+  "created_at": "2026-06-06T10:00:00Z"
+}
+```
+
+### GoogleUserProfile
+```json
+{
+  "id": "1",
+  "name": "Alice Smith",
+  "email": "alice@gmail.com",
+  "avatarUrl": "https://lh3.googleusercontent.com/a/..."
+}
+```
+
+### GoogleAuthResponse
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": { /* GoogleUserProfile */ }
+}
 ```
 
 ### GroupResponse
@@ -458,8 +553,8 @@ curl "$BASE_URL/groups/1/balances" \
     {"user_id": 1, "amount": 1500.0},
     {"user_id": 2, "amount": 1500.0}
   ],
-  "created_at": "2026-05-17T10:00:00Z",
-  "updated_at": "2026-05-17T10:00:00Z"
+  "created_at": "2026-06-06T10:00:00Z",
+  "updated_at": "2026-06-06T10:00:00Z"
 }
 ```
 
@@ -474,23 +569,27 @@ curl "$BASE_URL/groups/1/balances" \
 
 | Status | Meaning                                   |
 |--------|-------------------------------------------|
-| 400    | Bad request — invalid input data          |
-| 401    | Unauthorized — missing or invalid token   |
-| 403    | Forbidden — not allowed to perform action |
-| 404    | Not found — resource does not exist       |
-| 422    | Validation error — check request body     |
+| `400`  | Bad request — invalid or missing input    |
+| `401`  | Unauthorized — missing, invalid, or expired token |
+| `403`  | Forbidden — not allowed to perform action |
+| `404`  | Not found — resource does not exist       |
+| `422`  | Validation error — check request body     |
 
-**Error body format:**
+**Standard error body:**
 ```json
 { "detail": "Error message describing what went wrong" }
+```
+
+**Google auth error body:**
+```json
+{ "error": "Unauthorized", "message": "Invalid google credential. Backend verification failed." }
 ```
 
 ---
 
 ## Full Curl Examples
 
-A complete walkthrough from signup to checking balances:
-
+### Email/Password Flow
 ```bash
 BASE_URL="https://<your-replit-domain>"
 
@@ -503,10 +602,11 @@ curl -X POST "$BASE_URL/auth/signup" \
   -H "Content-Type: application/json" \
   -d '{"email": "bob@example.com", "name": "Bob", "password": "secret123"}'
 
-# 2. Login as Alice
+# 2. Login as Alice and extract token
 TOKEN=$(curl -s -X POST "$BASE_URL/auth/login" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=alice@example.com&password=secret123" | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+  -d "username=alice@example.com&password=secret123" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # 3. Create a group with Bob
 curl -X POST "$BASE_URL/groups" \
@@ -522,5 +622,21 @@ curl -X POST "$BASE_URL/groups/1/expenses" \
 
 # 5. Check balances
 curl "$BASE_URL/groups/1/balances" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### Google Sign-In Flow
+```bash
+BASE_URL="https://<your-replit-domain>"
+
+# 1. Exchange Google ID token for a backend JWT
+RESPONSE=$(curl -s -X POST "$BASE_URL/api/auth/google" \
+  -H "Content-Type: application/json" \
+  -d '{"idToken": "<id-token-from-google-sdk>"}')
+
+TOKEN=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+# 2. Use the token exactly like email/password token
+curl "$BASE_URL/groups" \
   -H "Authorization: Bearer $TOKEN"
 ```
