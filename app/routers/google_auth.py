@@ -5,7 +5,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models.user import User
 from app.schemas.user import GoogleAuthRequest, GoogleAuthResponse, GoogleUserProfile
-from app.services.auth import create_access_token
+from app.services.auth import (
+    create_access_token,
+    generate_refresh_token,
+    store_refresh_token,
+)
 from app.services.google_auth import verify_google_token
 
 router = APIRouter(prefix="/api/auth", tags=["google-auth"])
@@ -63,9 +67,12 @@ async def google_login(body: GoogleAuthRequest, db: AsyncSession = Depends(get_d
             await db.refresh(user)
 
     access_token = create_access_token(user.id)
+    raw_refresh, refresh_hash = generate_refresh_token()
+    await store_refresh_token(user.id, refresh_hash, db)
 
     return GoogleAuthResponse(
-        token=access_token,
+        access_token=access_token,
+        refresh_token=raw_refresh,
         user=GoogleUserProfile(
             id=str(user.id),
             name=user.name,

@@ -25,6 +25,20 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class LoginResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str
+
+
 class TokenData(BaseModel):
     user_id: int | None = None
 
@@ -41,5 +55,7 @@ class GoogleUserProfile(BaseModel):
 
 
 class GoogleAuthResponse(BaseModel):
-    token: str
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
     user: GoogleUserProfile

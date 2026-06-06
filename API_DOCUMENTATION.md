@@ -6,7 +6,8 @@ A REST API for managing shared expenses among friends and groups. Supports email
 
 **Base URL:** `https://<your-replit-domain>`  
 **Interactive Docs:** `https://<your-replit-domain>/docs`  
-**Auth:** JWT Bearer Token — obtain via `/auth/login` (email/password) or `/api/auth/google` (Google Sign-In)
+**Auth:** JWT Bearer Token — obtain via `/auth/login` (email/password) or `/api/auth/google` (Google Sign-In)  
+**Token Strategy:** Short-lived access token (30 min) + long-lived refresh token (30 days, rolling)
 
 ---
 
@@ -15,6 +16,8 @@ A REST API for managing shared expenses among friends and groups. Supports email
 - [Authentication](#authentication)
   - [POST /auth/signup](#post-authsignup)
   - [POST /auth/login](#post-authlogin)
+  - [POST /auth/refresh](#post-authrefresh)
+  - [POST /auth/logout](#post-authlogout)
   - [GET /auth/me](#get-authme)
   - [POST /api/auth/google](#post-apiauthgoogle)
 - [Groups](#groups)
@@ -50,18 +53,19 @@ curl -X POST "$BASE_URL/auth/signup" \
 **Response `201`**
 ```json
 {
-  "id": 1,
-  "email": "alice@example.com",
-  "name": "Alice",
-  "created_at": "2026-06-06T10:00:00Z"
+  "access_token": "eyJhbGci...",
+  "refresh_token": "dGhpcyBpcyBhIHJhbmRvbSB0b2tlbg...",
+  "token_type": "bearer"
 }
 ```
+
+> Store both tokens securely. Use `access_token` for API calls. Use `refresh_token` only to get a new `access_token` via `/auth/refresh`.
 
 ---
 
 ### POST `/auth/login`
 
-Authenticate with email/password and receive a JWT access token.
+Authenticate with email/password and receive both tokens.
 
 **Request Body** (form data — `application/x-www-form-urlencoded`)
 
@@ -80,10 +84,67 @@ curl -X POST "$BASE_URL/auth/login" \
 **Response `200`**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGci...",
+  "refresh_token": "dGhpcyBpcyBhIHJhbmRvbSB0b2tlbg...",
   "token_type": "bearer"
 }
 ```
+
+---
+
+### POST `/auth/refresh`
+
+Exchange a refresh token for a new access token + a new refresh token (rolling). The old refresh token is immediately invalidated — store the new one.
+
+**Request Body**
+
+| Field         | Type   | Required | Description            |
+|---------------|--------|----------|------------------------|
+| refresh_token | string | Yes      | Valid refresh token    |
+
+**Example**
+```bash
+curl -X POST "$BASE_URL/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "dGhpcyBpcyBhIHJhbmRvbSB0b2tlbg..."}'
+```
+
+**Response `200`**
+```json
+{
+  "access_token": "eyJhbGci...new...",
+  "refresh_token": "bmV3UmVmcmVzaFRva2Vu...",
+  "token_type": "bearer"
+}
+```
+
+**Error Responses**
+
+| Status | Condition |
+|--------|-----------|
+| `401`  | Refresh token not found, already used, or revoked |
+| `401`  | Refresh token expired (30 days) — user must log in again |
+
+---
+
+### POST `/auth/logout`
+
+Revoke a refresh token. The access token will naturally expire (max 30 min). Call this on user-initiated logout.
+
+**Request Body**
+
+| Field         | Type   | Required | Description               |
+|---------------|--------|----------|---------------------------|
+| refresh_token | string | Yes      | The refresh token to revoke |
+
+**Example**
+```bash
+curl -X POST "$BASE_URL/auth/logout" \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "dGhpcyBpcyBhIHJhbmRvbSB0b2tlbg..."}'
+```
+
+**Response `204 No Content`**
 
 ---
 

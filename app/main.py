@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.database import engine, Base
-from app.models import user, group, expense  # noqa: F401 - ensure models are registered
+from app.models import user, group, expense, refresh_token  # noqa: F401 - ensure models are registered
 from app.routers import auth, groups, expenses
 from app.routers import google_auth
 
